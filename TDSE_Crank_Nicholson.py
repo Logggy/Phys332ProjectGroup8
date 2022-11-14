@@ -275,8 +275,9 @@ def main():
     
     
     
-    
-  
+    for i in range(8):
+        plt.plot(x,abs(y[:,1000*i]))
+    plt.show()
     
 
 
