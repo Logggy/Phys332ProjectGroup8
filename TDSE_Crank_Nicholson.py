@@ -10,32 +10,23 @@ import scipy as sp
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.animation import FuncAnimation
+from scipy.sparse import diags
 
 
-
-
+# hbar = 1.05457182e-34
+# m    = 9.1093837e-31
+hbar = 1
+m    = 1
+L    = 1
 
 #============================================
-# Solver for a tridiagonal matrix.
-# a,b,c are the lower, center, and upper diagonals,
-# r is the RHS vector.
-def tridiag(a,b,c,r):
-    n    = b.size
-    gam  = np.zeros(n,dtype=complex)
-    u    = np.zeros(n,dtype=complex)
-    bet  = b[0]
-    u[0] = r[0]/bet 
-    for j in range(1,n):
-        gam[j] = c[j-1]/bet
-        bet    = b[j]-a[j]*gam[j]
-        if (bet == 0.0):
-            print('[tridiag]: matrix not invertible.')
-            exit()
-        u[j]   = (r[j]-a[j]*u[j-1])/bet
-    for j in range(n-2,-1,-1):
-        u[j] = u[j]-gam[j+1]*u[j+1]
-    return u
 
+def tridiag(diag_low,diag_mid,diag_up):
+            #value     array     value
+    N=diag_mid.size
+    k = [diag_low*np.ones(N-1),diag_mid,diag_up*np.ones(N-1)]
+    offset = [-1,0,1]
+    return diags(k,offset).toarray()
 #============================================
 # Driver for the actual integrators. Sets the initial conditions
 # and generates the support point arrays in space and time.
@@ -46,14 +37,9 @@ def tridiag(a,b,c,r):
 #        fINT   : integrator (one of ftcs, implicit, cranknicholson)
 #        fBNC   : boundary condition function
 #        fINC   : potential function
-def TDSE_solve(J,minmaxx,dt0,minmaxt,fINT,fBNC,fINC,potential,**kwargs):
-    # hbar = 1.05457182e-34
-    # m    = 9.1093837e-31
-    hbar = 1
-    m    = 1
-    # for key in kwargs:
-    #     if (key=='kappa'):
-    #         kappa = kwargs[key]
+def TDSE_solve(J,minmaxx,dt0,minmaxt,fINT,fBNC,fINC,potential):
+    
+    
     # time and space discretization
     N  = int((minmaxt[1]-minmaxt[0])/dt0)+1
     dt = (minmaxt[1]-minmaxt[0])/float(N-1) # recalculate, to make exact
@@ -70,73 +56,6 @@ def TDSE_solve(J,minmaxx,dt0,minmaxt,fINT,fBNC,fINC,potential,**kwargs):
     return x,t,y
 
 #--------------------------------------------
-# Forward-time centered-space integrator.
-# Returns the full solution array (including 
-# initial conditions at t=0). Array should be
-# of shape (J,N), with J the spatial and N
-# the temporal support points.
-def ftcs(x,t,q,r,fBNC,fINC,potential):
-    J        = x.size
-    N        = t.size
-    y        = np.zeros((J+2,N),dtype=complex)
-    # from here ??????
-    xb=np.zeros(J+2,dtype=complex)
-    xb[0]=x[0]-(x[1]-x[0])
-    xb[-1]=x[-1]+(x[1]-x[0])
-    for i in range(J):
-        xb[i+1]=x[i]
-    
-    y[:,0]=fINC(xb)
-    y[0,0]=fBNC(0,y[:,0])
-    y[-1,0]=fBNC(1,y[:,0])
-    for n in range(N-1):
-        for j in range(1,J+1):
-            y[j,n+1]=complex(0,q)*y[j-1,n]+(1-complex(0,2*q)-complex(0,r*potential(y[j,n]))*y[j,n]+complex(0,q)*y[j+1,n])
-        y[0,n+1]=fBNC(0,y[:,n+1])
-        y[-1,n+1]=fBNC(1,y[:,n+1])
-            
-
-    # to here ??????
-    return y[1:J+1,:]
-
-#--------------------------------------------
-# Fully implicit integrator.
-# Returns the full solution array (including 
-# initial conditions at t=0). Array should be
-# of shape (J,N), with J the spatial and N
-# the temporal support points.
-# Uses tridiag to solve the tridiagonal matrix.
-def implicit(x,t,q,r,fBNC,fINC,potential):
-    J        = x.size
-    N        = t.size
-    y        = np.zeros((J+2,N),dtype=complex)
-    # from here ??????
-    xb=np.zeros(J+2,dtype=complex)
-    xb[0]=x[0]-(x[1]-x[0])
-    xb[-1]=x[-1]+(x[1]-x[0])
-    
-    
-    tri_mid=np.zeros(J+2,dtype=complex)
-    tri_up=np.zeros(J+2,dtype=complex)
-    tri_low=np.zeros(J+2,dtype=complex)
-    tri_low[:]=-complex(0,q)
-    for i in range(J+2):
-        tri_mid[i]=1+complex(0,2*q)+complex(0,r*potential(xb[i]))
-    tri_up[:]=-complex(0,q)
-    
-    for i in range(J):
-        xb[i+1]=x[i]
-    
-    y[:,0]=fINC(xb)
-    y[0,0]=fBNC(0,y[:,0])
-    y[-1,0]=fBNC(1,y[:,0])
-    
-    for n in range(N-1):
-        y[:,n+1]=tridiag(tri_low, tri_mid, tri_up, y[:,n])
-        y[0,n+1]=fBNC(0,y[:,n+1])
-        y[-1,n+1]=fBNC(1,y[:,n+1])
-    # to here ??????
-    return y[1:J+1,:]
 
 #--------------------------------------------
 # Crank-Nicholson integrator.
@@ -149,34 +68,30 @@ def cranknicholson(x,t,q,r,fBNC,fINC,potential):
     J        = x.size
     N        = t.size
     y        = np.zeros((J+2,N),dtype=complex)
+    dx=x[1]-x[0]
     # from here ??????
     xb=np.zeros(J+2,dtype=complex)
     for i in range(J):
         xb[i+1]=x[i]
-    xb[0]=xb[0]-(x[1]-x[0])
-    xb[-1]=xb[-1]+(x[1]-x[0])
-   
-    tri_mid=np.zeros(J+2,dtype=complex)
-    tri_up=np.zeros(J+2,dtype=complex)
-    tri_low=np.zeros(J+2,dtype=complex)
+    xb[0]=xb[0]-dx
+    xb[-1]=xb[-1]+dx
     
-    tri_low[:]=-complex(0,q)
-    for i in range(J+2):
-        tri_mid[i]=1+complex(0,2*q)+complex(0,r*potential(xb[i]))
-    tri_up[:]=-complex(0,q)
-      
+    
+    potential_func=np.zeros(xb.size,dtype=complex)
+    for i in range(xb.size):
+        potential_func[i]=potential(xb[i])
+    RHS_matrix=tridiag(1j*q,1-1j*2*q-1j*r*potential_func,1j*q)
+    LHS_matrix=tridiag(-1j*q,1+1j*2*q+1j*r*potential_func,-1j*q)
     
     
     y[:,0]=fINC(xb)
     y[0,0]=fBNC(0,y[:,0])
     y[-1,0]=fBNC(1,y[:,0])
     
+    
+    
     for n in range(N-1):
-        RHS=y[:,n]
-        for j in range(1,J):
-            RHS[j]=complex(0,q)*y[j-1,n]+(complex(1,0)-complex(0,2*q)-complex(0,r*potential(x[j])))*y[j,n]+complex(0,q)*y[j+1,n]
-        
-        y[:,n+1]=tridiag(tri_low, tri_mid, tri_up, RHS)
+        y[:,n+1]=np.dot(np.dot(np.linalg.inv(LHS_matrix),RHS_matrix),y[:,n])
         y[0,n+1]=fBNC(0,y[:,n+1])
         y[-1,n+1]=fBNC(1,y[:,n+1])
     # to here ??????
@@ -185,30 +100,34 @@ def cranknicholson(x,t,q,r,fBNC,fINC,potential):
 #============================================
 
 def init(solver,problem,inc):
-    if (solver == 'ftcs'):
-        fINT = ftcs
-    elif (solver == 'implicit'):
-        fINT = implicit
-    elif (solver == 'CN'):
+    
+    if (solver == 'CN'):
         fINT = cranknicholson
     else:
         print('[init]: invalid solver %s' % (solver))
  
     if (problem == 'free'):
         potential    = Vfree
+        fBNC    = Bperiodic
+        minmaxx = np.array([-L,L])
+        minmaxt = np.array([0.0,100])
+    if (problem == 'well'):
+        potential    = Vwell
         fBNC    = Bnon
-        minmaxx = np.array([-0.5,0.5])
-        minmaxt = np.array([0.0,0.005])
-    if (problem == 'box'):
-        potential    = Vbox
-        fBNC    = Bnon
-        minmaxx = np.array([-0.5,0.5])
-        minmaxt = np.array([0.0,0.5])
+        minmaxx = np.array([-L,L])
+        minmaxt = np.array([0.0,100])
+    if (problem == 'wall'):
+        potential =Vwall
+        fBNC=Bnon 
+        minmaxx = np.array([-L,L])
+        minmaxt = np.array([0.0,100])
     else:
         print('[init]: invalid problem %s' % (problem))
         
     if (inc =='gaussian'):
         fINC    = gaussian_wavepacket
+    else:
+        print('[init]: invalid initial condition %s' %(inc))
 
     return fINT,fBNC,fINC,potential,minmaxx,minmaxt 
 
@@ -216,30 +135,73 @@ def init(solver,problem,inc):
 # functions for setting the initial conditions (T....)
 # and the boundary conditions (B.....)
 def Vfree(x):
-    return np.zeros(x.size)
+    return 0
 
-def Vbox(x):
+def Vwell(x):
 
-   if x<-0.2 or x>0.2:
-       return 1e20
+   if x<-0.4 or x>0.4:
+       return 1e10
    else:
        return 0 
 
-
+def Vwall(x):
+    if x>0.5 and x<0.52:
+        return 1e10
+    else:
+        return 0
+    
+    
 def Bnon(iside,y):
     if(iside==0):
         return y[1]
     else:
         return y[-2]
 
+def Bzero(iside,y):
+    return 0
+
+def Vspike(x):
+    return np.exp(-10.0*x**2)
+
+def Vrandom(x):
+    return np.random.rand(x.size)+1.0
+
+def Bdirichlet(iside,y):
+    if (iside==0):
+        return -y[1]
+    else:
+        return -y[y.size-2]
+
+def Bperiodic(iside,y):
+    if (iside==0):
+        return y[y.size-2]
+    else:
+        return y[1]
+#def cos
     
-def gaussian_wavepacket(x):
-    """Gaussian wavepacket at x0 +/- sigma0, with average momentum, p0."""
-    A = (2 * np.pi * 0.1**2)**(-0.25)
-    return A * np.exp(1j*1*x - ((x - 0)/(2 * 0.1))**2)
+def gaussian_wavepacket(x, a=0.1, x0=0, k0=1000):
+    """
+    a gaussian wave packet of width a, centered at x0, with momentum k0
+    """ 
+    return ((a * np.sqrt(np.pi)) ** (-0.5)
+            * np.exp(-0.5 * ((x - x0) * 1. / a) ** 2 + 1j * x * k0))
+
+
+
+
+
+def update(i,x,y,y1,y2,y3,line1,line2,line3):
+    y1 = np.abs(y[:,i+1])
+    y2 = y[:,i+1].real
+    y3 = y[:,i+1].imag
+    line1.set_data(x,y1)
+    line2.set_data(x,y2)
+    line3.set_data(x,y3)
     
 
 
+
+    
 
 #============================================
 def main():
@@ -250,18 +212,17 @@ def main():
     parser.add_argument("dt",type=float,
                         help="timestep")
     parser.add_argument("solver",type=str,
-                        help="diffusion equation solver:\n"
-                             "    ftcs    : forward-time centered-space\n"
-                             "    implicit: fully implicit\n"
+                        help=" solver:\n"
                              "    CN      : Crank-Nicholson")
-    parser.add_argument("inc", type=str,
-                        help="initial condition:\n"
-                             "    gaussian   : gaussian wavepacket")
     parser.add_argument("problem",type=str,
                         help="potential function:\n"
-                             "    free   : constant 0 potential\n"
-                             "    box    : potential well\n      "
-                             )
+                             "    free    : constant 0 potential\n"
+                             "    well    : potential well\n      "
+                             '    wall    : tunneling\n          ')
+    parser.add_argument("inc", type=str,
+                        help="initial condition:\n"
+                             "    gaussian   : gaussian wavepacket\n")
+    
 
     args         = parser.parse_args()
     J            = args.J
@@ -273,23 +234,46 @@ def main():
     fINT,fBNC,fINC,potential,minmaxx,minmaxt = init(solver,problem,inc)
     x,t,y        = TDSE_solve(J,minmaxx,dt,minmaxt,fINT,fBNC,fINC,potential)
     
+    potential_func=np.zeros(x.size)
+    for i in range(x.size):
+        potential_func[i]=potential(x[i])
+   
+    fig1, (ax1,ax2,ax3) = plt.subplots(nrows=3,figsize=(15,15))
+    y1=np.abs(y[:,0])
+    y2=y[:,0].real
+    y3=y[:,0].imag
+    line1,=ax1.plot(x,y1)
+    line2,=ax2.plot(x,y2)
+    line3,=ax3.plot(x,y3)
+    ax1.set_xlim(minmaxx)
+    ax1.set_ylim([-1,5])
+    ax2.set_xlim(minmaxx)
+    ax2.set_ylim([-1,5])
+    ax3.set_xlim(minmaxx)
+    ax3.set_ylim([-1,5])
     
+    ax1.set_xlabel("x")
+    ax1.set_ylabel("Ψ^2")
+    ax2.set_xlabel("x")
+    ax2.set_ylabel("Real part of Ψ")
+    ax3.set_xlabel('x')
+    ax3.set_ylabel('Imag part of Ψ')
     
-    for i in range(8):
-        plt.plot(x,abs(y[:,1000*i]))
-    plt.show()
-    
+    ax1.plot(x,potential_func)
+    ax2.plot(x,potential_func)
+    ax3.plot(x,potential_func)
+    anim = FuncAnimation(fig1, update, frames=t.size-1, repeat=True,fargs=(x,y,y1,y2,y3,line1,line2,line3))  
+    anim.save('simulation.mp4', fps=30, extra_args=['-vcodec', 'libx264'])
+   
 
 
-   
-   
-      
-    # Ploting graph
-    
   
     
         
 #========================================
 
+
 main()
+
+
 
