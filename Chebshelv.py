@@ -3,21 +3,19 @@
 import argparse                  # allows us to deal with arguments to main()
 from argparse import RawTextHelpFormatter
 import numpy as np
-import cmath
-import scipy as sp
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 from matplotlib.animation import FuncAnimation
 from scipy.fft import fft, ifft, fftfreq, fftshift
+from scipy.interpolate import UnivariateSpline
 
 hbar = 1
 m    = 1
-L    = 1
-
-
+L    = 5
+T    = 10
+# hbar = 1.05457182e-34
+# m    = 9.1093837e-31
 def TDSE_solve(J,minmaxx,dt0,minmaxt,fBNC,fINC,potential):
-    # hbar = 1.05457182e-34
-    # m    = 9.1093837e-31
+    
     
    
     N  = int((minmaxt[1]-minmaxt[0])/dt0)+1
@@ -30,7 +28,7 @@ def TDSE_solve(J,minmaxx,dt0,minmaxt,fBNC,fINC,potential):
     for i in range(x.size):
         potential_func[i]=potential(x[i])
     Emin=np.min(potential_func)
-    Emax=(hbar**2*np.pi**2)/(2*m*dx**2)+np.max(potential_func)
+    Emax=((hbar**2*np.pi**2)/(2*m*dx**2))+np.max(potential_func)
     
     
     print('[TDSE_solve]: E_min = %13.5e' % (Emin)) 
@@ -49,8 +47,8 @@ def CBsolver(x,t,Emin,Emax,fBNC,fINC,potential):
     dx=x[1]-x[0]
     
     xb=np.zeros(J+2,dtype=complex)
-    xb[0]=x[0]-(x[1]-x[0])
-    xb[-1]=x[-1]+(x[1]-x[0])
+    xb[0]=x[0]-dx
+    xb[-1]=x[-1]+dx
     for i in range(J):
         xb[i+1]=x[i]
     
@@ -58,12 +56,12 @@ def CBsolver(x,t,Emin,Emax,fBNC,fINC,potential):
     y[0,0]=fBNC(0,y[:,0])
     y[-1,0]=fBNC(1,y[:,0])
 
-    y[:,1]=complex(0,-1/deltaE)*Hamiltonian(xb,y[:,0],dx,potential)+complex(0,1+Emin/deltaE)*y[:,0]
+    y[:,1]=1j*(-1/deltaE)*Hamiltonian(xb,y[:,0],dx,potential)+1j*(1+(Emin/deltaE))*y[:,0]
     y[0,1]=fBNC(0,y[:,1])
     y[-1,1]=fBNC(1,y[:,1])
 
     for n in range(2,N-1):
-        y[:,n]=complex(0,-2/deltaE)*Hamiltonian(xb,y[:,n-1],dx,potential)+complex(0,2+2*Emin/deltaE)*y[:,n-1]+y[:,n-2]
+        y[:,n]=1j*(-2/deltaE)*Hamiltonian(xb,y[:,n-1],dx,potential)+1j*(2+(2*Emin/deltaE))*y[:,n-1]+y[:,n-2]
         y[0,n]=fBNC(0,y[:,n])
         y[-1,n]=fBNC(1,y[:,n])
             
@@ -76,13 +74,17 @@ def init(problem,inc):
         fBNC    = Bnon
         potential = Vwell
         minmaxx = np.array([-L,L])
-        minmaxt = np.array([0.0,100])
+        minmaxt = np.array([0.0,T])
     if (problem == 'free'):
         fBNC    = Bnon
         potential = Vfree
         minmaxx = np.array([-L,L])
-        minmaxt = np.array([0.0,100])
-    
+        minmaxt = np.array([0.0,T])
+    if (problem == 'wall'):
+        fBNC    = Bnon
+        potential = Vwall
+        minmaxx = np.array([-L,L])
+        minmaxt = np.array([0.0,T])  
     else:
         print('[init]: invalid problem %s' % (problem))
 
@@ -102,12 +104,15 @@ def Vfree(x):
 def Vwell(x):
 
    if x<-L/2 or x>L/2:
-       return 1e10
+       return 1e2
    else:
        return 0 
        
-
-
+def Vwall(x):
+    if x>L/2 and x<L/2+0.5:
+        return 1e2
+    else:
+        return 0
 def Bnon(iside,y):
     if(iside==0):
         return y[1]
@@ -115,7 +120,7 @@ def Bnon(iside,y):
         return y[-2]
 
     
-def gaussian_wavepacket(x, a=0.1, x0=0, k0=0):
+def gaussian_wavepacket(x, a=0.5, x0=0, k0=1e10):
     """
     a gaussian wave packet of width a, centered at x0, with momentum k0
     """ 
@@ -125,15 +130,26 @@ def gaussian_wavepacket(x, a=0.1, x0=0, k0=0):
 
 #-----------------------------------------------------------
 
-# Finding the operators of the hamiltonian
+# def dydx2(x,y):
+#    k=2*np.pi*np.fft.fftfreq(x.size)
+#    k=np.fft.fftshift(k)
+#    dydx2=np.fft.ifft(np.fft.fft(y) * (-k**2))
+#    return dydx2
+def dydx2(x,psi):
+    dx=x[1]-x[0]
+    secondderiv = np.zeros(psi.size, dtype=complex)
+    for i in range(1, psi.size - 1):
+        secondderiv[i] = (psi[i+1] + psi[i-1] - 2. * psi[i]) / (dx * dx)
+    secondderiv[0]         = (psi[1] + psi[psi.size-1] - 2. * psi[0]) / (dx * dx)  
+    secondderiv[psi.size-1] = (psi[0] + psi[psi.size-2] - 2. * psi[psi.size-1]) / (dx * dx)   
+    secondderiv[0]=secondderiv[1]
+    secondderiv[-1]=secondderiv[-2]
+    return secondderiv
 def Hamiltonian(x,psi,dx,potential):
-    k=fftfreq(psi.size,dx)
-    k=fftshift(k)
-    dydx2=ifft(-4*np.pi**2*k**2*fft(psi))
     potential_func=np.zeros(x.size,dtype=complex)
     for i in range(x.size):
         potential_func[i]=potential(x[i])
-    return (-hbar**2/(2*m))*dydx2+psi*potential_func
+    return (-hbar**2/(2*m))*dydx2(x,psi)+psi*potential_func
     
 def update(i,x,y,y1,y2,y3,line1,line2,line3):
     y1 = np.abs(y[:,i+1])
@@ -168,7 +184,7 @@ def main():
 
     fBNC,fINC,potential,minmaxx,minmaxt = init(problem,inc)
     x,t,y        = TDSE_solve(J,minmaxx,dt,minmaxt,fBNC,fINC,potential)
-    print(y[:,10:12])
+    
     
     potential_func=np.zeros(x.size)
     for i in range(x.size):
@@ -182,11 +198,11 @@ def main():
     line2,=ax2.plot(x,y2)
     line3,=ax3.plot(x,y3)
     ax1.set_xlim(minmaxx)
-    ax1.set_ylim([-1,5])
+    ax1.set_ylim([-1,1])
     ax2.set_xlim(minmaxx)
-    ax2.set_ylim([-1,5])
+    ax2.set_ylim([-1,1])
     ax3.set_xlim(minmaxx)
-    ax3.set_ylim([-1,5])
+    ax3.set_ylim([-1,1])
     
     ax1.set_xlabel("x")
     ax1.set_ylabel("Ψ^2")
@@ -202,14 +218,37 @@ def main():
     anim.save('simulation.mp4', fps=30, extra_args=['-vcodec', 'libx264'])
   
     
+    # x=np.arange(0,10,0.1)
+    # y=1/2*4*x**2
+    # fig,ax=plt.subplots()
+    # ax.plot(x,y)
+    # ax.plot(x,dydx2(x,y))
     
-    
-    
-    
-    
-    
+    # ax.set_ylim([-2,10])
     
 
+    
+   
+#     n_true = 30 # number of pixels we want to compute
+#     n_boundary = 15 # number of pixels to extend the image in all directions
+   
+
+# # First compute g and lapg including boundary extenstion
+#     n = n_true + n_boundary * 2
+#     x = np.arange(-n//2,n//2)
+   
+#     g = np.sin(x)+np.cos(x)*1j
+#     kx = 2 * np.pi * np.fft.fftfreq(n)
+  
+#     lapg = (np.fft.ifft(np.fft.fft(g) * (-kx**2 )))
+    
+#     # Now crop the two images to our desired size
+#     x = x[n_boundary:-n_boundary]
+#     g = g[n_boundary:-n_boundary]
+#     lapg = lapg[n_boundary:-n_boundary]
+    
+    # Display
+    
     
     
     

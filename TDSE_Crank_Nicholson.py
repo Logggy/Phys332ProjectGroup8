@@ -17,8 +17,8 @@ from scipy.sparse import diags
 # m    = 9.1093837e-31
 hbar = 1
 m    = 1
-L    = 1
-
+L    = 5
+T    = 1
 #============================================
 
 def tridiag(diag_low,diag_mid,diag_up):
@@ -69,7 +69,7 @@ def cranknicholson(x,t,q,r,fBNC,fINC,potential):
     N        = t.size
     y        = np.zeros((J+2,N),dtype=complex)
     dx=x[1]-x[0]
-    # from here ??????
+    
     xb=np.zeros(J+2,dtype=complex)
     for i in range(J):
         xb[i+1]=x[i]
@@ -94,7 +94,7 @@ def cranknicholson(x,t,q,r,fBNC,fINC,potential):
         y[:,n+1]=np.dot(np.dot(np.linalg.inv(LHS_matrix),RHS_matrix),y[:,n])
         y[0,n+1]=fBNC(0,y[:,n+1])
         y[-1,n+1]=fBNC(1,y[:,n+1])
-    # to here ??????
+        
     return y[1:J+1,:]
 
 #============================================
@@ -108,19 +108,19 @@ def init(solver,problem,inc):
  
     if (problem == 'free'):
         potential    = Vfree
-        fBNC    = Bperiodic
+        fBNC    = Bnon
         minmaxx = np.array([-L,L])
-        minmaxt = np.array([0.0,100])
+        minmaxt = np.array([0.0,T])
     if (problem == 'well'):
         potential    = Vwell
         fBNC    = Bnon
         minmaxx = np.array([-L,L])
-        minmaxt = np.array([0.0,100])
+        minmaxt = np.array([0.0,T])
     if (problem == 'wall'):
         potential =Vwall
-        fBNC=Bnon 
+        fBNC=Bnon
         minmaxx = np.array([-L,L])
-        minmaxt = np.array([0.0,100])
+        minmaxt = np.array([0.0,T])
     else:
         print('[init]: invalid problem %s' % (problem))
         
@@ -139,14 +139,14 @@ def Vfree(x):
 
 def Vwell(x):
 
-   if x<-0.4 or x>0.4:
+   if x<-L/2 or x>L/2:
        return 1e10
    else:
        return 0 
 
 def Vwall(x):
-    if x>0.5 and x<0.52:
-        return 1e10
+    if x>2 and x<2.5:
+        return 25
     else:
         return 0
     
@@ -179,7 +179,7 @@ def Bperiodic(iside,y):
         return y[1]
 #def cos
     
-def gaussian_wavepacket(x, a=0.1, x0=0, k0=1000):
+def gaussian_wavepacket(x, a=0.5, x0=0, k0=1e10):
     """
     a gaussian wave packet of width a, centered at x0, with momentum k0
     """ 
@@ -246,11 +246,11 @@ def main():
     line2,=ax2.plot(x,y2)
     line3,=ax3.plot(x,y3)
     ax1.set_xlim(minmaxx)
-    ax1.set_ylim([-1,5])
+    ax1.set_ylim([-1,2])
     ax2.set_xlim(minmaxx)
-    ax2.set_ylim([-1,5])
+    ax2.set_ylim([-1,2])
     ax3.set_xlim(minmaxx)
-    ax3.set_ylim([-1,5])
+    ax3.set_ylim([-1,2])
     
     ax1.set_xlabel("x")
     ax1.set_ylabel("Ψ^2")
