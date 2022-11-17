@@ -121,13 +121,17 @@ def init(solver,problem,inc):
         fBNC=Bnon
         minmaxx = np.array([-L,L])
         minmaxt = np.array([0.0,T])
-    else:
-        print('[init]: invalid problem %s' % (problem))
+    if (problem == 'osci'):
+        potential =Voscillator
+        fBNC=Bnon
+        minmaxx = np.array([-L,L])
+        minmaxt = np.array([0.0,T])
         
     if (inc =='gaussian'):
         fINC    = gaussian_wavepacket
-    else:
-        print('[init]: invalid initial condition %s' %(inc))
+    if (inc =='sin'):
+        fINC=sin
+    
 
     return fINT,fBNC,fINC,potential,minmaxx,minmaxt 
 
@@ -140,25 +144,25 @@ def Vfree(x):
 def Vwell(x):
 
    if x<-L/2 or x>L/2:
-       return 1e10
+       return 1e3
    else:
        return 0 
 
 def Vwall(x):
-    if x>2 and x<2.5:
-        return 25
+    if x>2 and x<2.1:
+        return 1e3
     else:
         return 0
     
-    
+def Voscillator(x,K=1):
+    return 1/2*K*x**2
 def Bnon(iside,y):
     if(iside==0):
         return y[1]
     else:
         return y[-2]
 
-def Bzero(iside,y):
-    return 0
+
 
 def Vspike(x):
     return np.exp(-10.0*x**2)
@@ -177,14 +181,21 @@ def Bperiodic(iside,y):
         return y[y.size-2]
     else:
         return y[1]
-#def cos
-    
-def gaussian_wavepacket(x, a=0.5, x0=0, k0=1e10):
+def sin(x,a=L,n=4):
+    #a length of the potential well
+    #n mode
+    y=np.zeros(x.size,dtype=complex) 
+    for i in range(x.size):    
+        if x[i]>-L/2 and x[i]<L/2:
+            y[i]=np.sqrt(2/a)*np.sin(n*np.pi*x[i]/a)
+        else:
+            y[i]=0
+    return y
+def gaussian_wavepacket(x, sig=0.1, x0=0, p0=1):
     """
     a gaussian wave packet of width a, centered at x0, with momentum k0
-    """ 
-    return ((a * np.sqrt(np.pi)) ** (-0.5)
-            * np.exp(-0.5 * ((x - x0) * 1. / a) ** 2 + 1j * x * k0))
+    """
+    return 1/(np.pi**(1/4)*sig**(1/2))*np.exp(-(x-x0)**2/(2*sig**2))*np.exp(1j*p0*x/hbar)
 
 
 
@@ -218,10 +229,13 @@ def main():
                         help="potential function:\n"
                              "    free    : constant 0 potential\n"
                              "    well    : potential well\n      "
-                             '    wall    : tunneling\n          ')
+                             '    wall    : tunneling\n          '
+                             '    osci    :   oscillator')
     parser.add_argument("inc", type=str,
                         help="initial condition:\n"
-                             "    gaussian   : gaussian wavepacket\n")
+                             "    gaussian   : gaussian wavepacket\n"
+                             '    sin        : sin wave\n         '
+                             )
     
 
     args         = parser.parse_args()
@@ -263,7 +277,7 @@ def main():
     ax2.plot(x,potential_func)
     ax3.plot(x,potential_func)
     anim = FuncAnimation(fig1, update, frames=t.size-1, repeat=True,fargs=(x,y,y1,y2,y3,line1,line2,line3))  
-    anim.save('simulation.mp4', fps=30, extra_args=['-vcodec', 'libx264'])
+    anim.save('simulation.gif', fps=30, extra_args=['-vcodec', 'libx264'])
    
 
 
